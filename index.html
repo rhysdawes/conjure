@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <title>Conjure</title>
+  <meta name="description" content="Describe what you're trying to do. Conjure builds the app and keeps it for next time.">
+  <meta name="theme-color" content="#0f0e13">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Conjure">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Home -->
+  <section id="home" class="view">
+    <header class="home-head">
+      <h1>Conjure</h1>
+      <button class="icon-btn" id="open-settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </header>
+    <div id="install-hint" class="notice" hidden>
+      <strong>Add Conjure to your Home Screen.</strong> In Safari, tap Share, then “Add to Home Screen”. It runs full-screen and keeps your apps safe from Safari’s storage clean-up.
+    </div>
+    <div id="key-hint" class="notice notice-accent" hidden>
+      <strong>One step first:</strong> add your Anthropic API key in settings so Conjure can build apps.
+      <button class="btn btn-small" id="key-hint-btn">Open settings</button>
+    </div>
+    <div class="grid" id="app-grid"></div>
+    <p class="empty" id="empty-state" hidden>Describe anything you’re trying to do. Conjure builds an app for it and keeps it here for next time.</p>
+  </section>
+
+  <!-- Compose -->
+  <section id="compose" class="view" hidden>
+    <header class="bar">
+      <button class="bar-btn" data-back>Cancel</button>
+      <span class="bar-title">New app</span>
+      <span class="bar-spacer"></span>
+    </header>
+    <div class="compose-body">
+      <label class="big-label" for="brief">What are you trying to do?</label>
+      <textarea id="brief" rows="8" placeholder="e.g. I want to run lines for an audition. I’ll photograph the script; you read the other characters out loud with the emotion I describe and wait for me to say my lines."></textarea>
+      <p class="hint">Say it however it comes out: who it’s for, how you’d use it, what would make it great. You can change anything later.</p>
+      <div class="chips" id="examples"></div>
+    </div>
+    <footer class="footer">
+      <button class="btn btn-primary btn-block" id="build-btn">Build it</button>
+    </footer>
+  </section>
+
+  <!-- Building -->
+  <section id="building" class="view" hidden>
+    <div class="building-body">
+      <div class="orb" aria-hidden="true"></div>
+      <h2 id="build-title">Designing your app…</h2>
+      <p class="build-stage" id="build-stage">Thinking about what you need</p>
+      <p class="build-thoughts" id="build-thoughts"></p>
+      <p class="build-note">This takes a few minutes. Keep Conjure open; leaving the app stops the build.</p>
+      <p class="build-error" id="build-error" hidden></p>
+    </div>
+    <footer class="footer footer-row">
+      <button class="btn" id="build-cancel">Cancel</button>
+      <button class="btn btn-primary" id="build-retry" hidden>Try again</button>
+    </footer>
+  </section>
+
+  <!-- Runner -->
+  <section id="runner" class="view" hidden>
+    <header class="bar">
+      <button class="bar-btn" id="runner-back" aria-label="Back to apps">‹ Apps</button>
+      <span class="bar-title" id="runner-title"></span>
+      <button class="bar-btn" id="runner-change">Change<span class="dot" id="error-dot" hidden></span></button>
+    </header>
+    <div class="frame-wrap" id="frame-wrap"></div>
+  </section>
+
+  <!-- Settings -->
+  <section id="settings" class="view" hidden>
+    <header class="bar">
+      <button class="bar-btn" data-back>‹ Apps</button>
+      <span class="bar-title">Settings</span>
+      <span class="bar-spacer"></span>
+    </header>
+    <div class="settings-body">
+      <div class="group">
+        <label for="s-anthropic">Anthropic API key <span class="req">required</span></label>
+        <input id="s-anthropic" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…">
+        <p class="hint">Builds your apps and powers their AI features. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It stays on this phone.</p>
+        <button class="btn btn-small" id="s-check">Check key</button> <span class="hint inline" id="s-check-result"></span>
+      </div>
+      <div class="group">
+        <label for="s-openai">OpenAI API key <span class="opt">optional</span></label>
+        <input id="s-openai" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-…">
+        <p class="hint">Turns on expressive voices that can act out direction (“furious, but hiding it”). Without it, apps use the iPhone’s built-in voices. Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.</p>
+        <label for="s-voice" class="sub">Default expressive voice</label>
+        <select id="s-voice"></select>
+      </div>
+      <div class="group">
+        <label for="s-about">About you <span class="opt">optional</span></label>
+        <textarea id="s-about" rows="3" placeholder="e.g. I’m an actor in London. I like clean, minimal designs."></textarea>
+        <p class="hint">Every app Conjure builds is tailored with this.</p>
+      </div>
+      <div class="group">
+        <label>Test sound and mic</label>
+        <p class="hint">Checks the voice, then listens to you and says back what it heard. If you hear nothing, check the volume and the silent switch.</p>
+        <button class="btn btn-small" id="s-test-audio">Run test</button>
+        <pre class="log" id="s-test-log" hidden></pre>
+      </div>
+      <div class="group">
+        <label>Backup</label>
+        <p class="hint">Save all your apps and their data to a file, or restore from one.</p>
+        <div class="row">
+          <button class="btn btn-small" id="s-export">Export</button>
+          <button class="btn btn-small" id="s-import">Import</button>
+          <input type="file" id="s-import-file" accept="application/json,.json" hidden>
+        </div>
+      </div>
+      <details class="group">
+        <summary>Advanced</summary>
+        <label for="s-model" class="sub">Claude model</label>
+        <input id="s-model" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <label for="s-tts-model" class="sub">Expressive voice model</label>
+        <input id="s-tts-model" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </details>
+      <p class="version" id="version"></p>
+    </div>
+  </section>
+
+  <!-- Change sheet -->
+  <div class="sheet-backdrop" id="change-sheet" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="change-title">
+      <div class="grabber"></div>
+      <h3 id="change-title">Change this app</h3>
+      <textarea id="change-text" rows="4" placeholder="e.g. Let me pick a different voice for each character, and add a button to repeat the last line."></textarea>
+      <div class="chips" id="change-chips"></div>
+      <button class="btn btn-primary btn-block" id="change-apply">Make the change</button>
+      <div class="sheet-row">
+        <button class="btn btn-small" id="change-undo">Undo last change</button>
+        <button class="btn btn-small" id="change-reload">Restart app</button>
+        <button class="btn btn-small btn-danger" id="change-delete">Delete app</button>
+      </div>
+      <div class="confirm" id="delete-confirm" hidden>
+        <p>Delete this app and everything saved in it?</p>
+        <div class="row">
+          <button class="btn btn-small" id="delete-no">Keep it</button>
+          <button class="btn btn-small btn-danger-solid" id="delete-yes">Delete</button>
+        </div>
+      </div>
+      <button class="btn btn-block btn-ghost" id="change-close">Close</button>
+    </div>
+  </div>
+
+  <!-- File picker sheet (serves host.pickFiles) -->
+  <div class="sheet-backdrop" id="files-sheet" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="files-title">
+      <div class="grabber"></div>
+      <h3 id="files-title">Add pages</h3>
+      <p class="hint">Take a photo of each page, or choose photos and PDFs.</p>
+      <div class="thumbs" id="files-thumbs"></div>
+      <div class="row row-fill">
+        <button class="btn" id="files-camera">Take photo</button>
+        <button class="btn" id="files-choose">Choose files</button>
+      </div>
+      <input type="file" id="files-camera-input" accept="image/*" capture="environment" hidden>
+      <input type="file" id="files-choose-input" multiple hidden>
+      <p class="build-error" id="files-error" hidden></p>
+      <button class="btn btn-primary btn-block" id="files-done" disabled>Use pages</button>
+      <button class="btn btn-block btn-ghost" id="files-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
