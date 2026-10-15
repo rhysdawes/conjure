@@ -8,6 +8,29 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 export const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts';
 export const EXPRESSIVE_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];
 const TTS_CACHE = 'conjure-tts-v1';
+const EXPRESSIVE_GENDER = {
+  alloy: 'neutral', ash: 'male', ballad: 'male', coral: 'female', echo: 'male', fable: 'male',
+  nova: 'female', onyx: 'male', sage: 'female', shimmer: 'female', verse: 'male',
+};
+// Web Speech doesn't expose voice gender, so label Apple's common English voices.
+const SYSTEM_GENDER = {
+  female: ['Samantha', 'Karen', 'Moira', 'Tessa', 'Veena', 'Serena', 'Kate', 'Martha', 'Stephanie', 'Fiona', 'Allison', 'Ava', 'Susan', 'Victoria', 'Zoe', 'Nicky', 'Catherine', 'Isha', 'Kathy', 'Shelley', 'Sandy', 'Flo', 'Grandma', 'Google UK English Female', 'Google US English'],
+  male: ['Daniel', 'Arthur', 'Oliver', 'Alex', 'Fred', 'Tom', 'Aaron', 'Gordon', 'Lee', 'Rishi', 'Evan', 'Nathan', 'Jamie', 'Malcolm', 'Ralph', 'Reed', 'Rocko', 'Eddy', 'Grandpa', 'Google UK English Male'],
+};
+// Joke voices that ship with macOS/iOS; useless for acting or reading aloud.
+const NOVELTY_VOICES = ['Albert', 'Bad News', 'Bahh', 'Bells', 'Boing', 'Bubbles', 'Cellos', 'Good News', 'Jester', 'Organ', 'Superstar', 'Trinoids', 'Whisper', 'Wobble', 'Zarvox', 'Junior', 'Ralph', 'Kathy', 'Fred'];
+
+// Apple's retro "Eloquence" voices: usable, but robotic next to the others.
+const BASIC_VOICES = ['Eddy', 'Flo', 'Grandma', 'Grandpa', 'Reed', 'Rocko', 'Sandy', 'Shelley'];
+
+const baseVoiceName = (name) => name.replace(/\s*\(.*\)\s*$/, '').trim();
+
+function systemVoiceGender(name) {
+  const base = baseVoiceName(name);
+  if (SYSTEM_GENDER.female.includes(base)) return 'female';
+  if (SYSTEM_GENDER.male.includes(base)) return 'male';
+  return 'unknown';
+}
 
 // ---------- Claude ----------
 
@@ -149,18 +172,29 @@ export class AudioServices {
       });
       voices = speechSynthesis.getVoices();
     }
-    const lang = (navigator.language || 'en').slice(0, 2);
-    const quality = (v) => (/premium/i.test(v.name + v.voiceURI) ? 'premium' : /enhanced/i.test(v.name + v.voiceURI) ? 'enhanced' : 'default');
-    const rank = { premium: 0, enhanced: 1, default: 2 };
+    const locale = navigator.language || 'en-GB';
+    const lang = locale.slice(0, 2);
+    const quality = (v) => {
+      if (/premium/i.test(v.name + v.voiceURI)) return 'premium';
+      if (/enhanced/i.test(v.name + v.voiceURI)) return 'enhanced';
+      return BASIC_VOICES.includes(baseVoiceName(v.name)) ? 'basic' : 'default';
+    };
+    const rank = { premium: 0, enhanced: 1, default: 2, basic: 3 };
+    const localeFirst = (v) => (v.lang.replace('_', '-') === locale ? 0 : 1);
     return voices
-      .filter((v) => v.lang.startsWith(lang))
-      .map((v) => ({ name: v.name, lang: v.lang, quality: quality(v) }))
-      .sort((a, b) => rank[a.quality] - rank[b.quality] || a.name.localeCompare(b.name));
+      .filter((v) => v.lang.startsWith(lang) && !NOVELTY_VOICES.includes(baseVoiceName(v.name)))
+      .map((v) => ({ name: v.name, lang: v.lang, quality: quality(v), gender: systemVoiceGender(v.name) }))
+      .sort((a, b) => rank[a.quality] - rank[b.quality] || localeFirst(a) - localeFirst(b) || a.name.localeCompare(b.name));
   }
 
   async voices() {
     const s = this.getSettings();
-    return { expressive: s.openaiKey ? EXPRESSIVE_VOICES : [], system: await this.systemVoices() };
+    const expressive = s.openaiKey ? EXPRESSIVE_VOICES : [];
+    return {
+      expressive,
+      expressiveInfo: expressive.map((name) => ({ name, gender: EXPRESSIVE_GENDER[name] })),
+      system: await this.systemVoices(),
+    };
   }
 
   usesExpressive(opts) {
@@ -413,16 +447,24 @@ export class AudioServices {
 
   // ---- screen ----
 
+  // Best effort: resolves true if the screen will stay on. A refusal (low power
+  // mode, unsupported browser) isn't the app's fault, so it's logged, not thrown.
   async keepAwake(on) {
     this.wantAwake = on;
-    if (!('wakeLock' in navigator)) return;
-    if (on && !this.wakeLock) {
-      this.wakeLock = await navigator.wakeLock.request('screen');
-      this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
-    } else if (!on && this.wakeLock) {
-      await this.wakeLock.release();
-      this.wakeLock = null;
+    if (!('wakeLock' in navigator)) return false;
+    try {
+      if (on && !this.wakeLock) {
+        this.wakeLock = await navigator.wakeLock.request('screen');
+        this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+      } else if (!on && this.wakeLock) {
+        await this.wakeLock.release();
+        this.wakeLock = null;
+      }
+    } catch (err) {
+      console.warn('Screen wake lock unavailable:', err);
+      return false;
     }
+    return on;
   }
 }
 

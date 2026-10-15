@@ -28,6 +28,8 @@ ${aboutBlock}
 ## Think before building
 The brief may be short and casual. Work out what the user actually needs to succeed at the task, from first open to the twentieth use, and build that. Fill gaps with sensible defaults and make choices adjustable in-app rather than asking. A complete, reliable core beats a sprawl of half-features.
 
+The user is waiting on their phone while you write, so keep the code tight: compact CSS, no dead code, no speculative features or elaborate fallbacks. Most apps should come in under 40 KB; the user can always ask for more later.
+
 ## The host API
 \`window.host\` exists before your scripts run. Every method returns a Promise unless noted.
 
@@ -49,8 +51,9 @@ host.speak(text, { voice?, direction?, rate?, pitch? }) → resolves when the sp
 - voice: a name from host.voices().expressive (uses the expressive engine) or host.voices().system[].name (uses the system engine). If omitted, expressive is used when available.
 - host.prefetchSpeech(text, sameOptions): starts generating expressive audio for lines coming up (e.g. the next two or three) so they play instantly. Fire-and-forget; a no-op for system voices.
 - host.stopSpeaking(): stops immediately; the pending speak() resolves.
-host.voices() → { expressive: string[], system: [{ name, lang, quality }] }
-- Let users pick a voice per role or character; distinct voices help a lot.
+host.voices() → { expressive: string[], expressiveInfo: [{ name, gender }], system: [{ name, lang, quality, gender }] }
+- system voices come best-first, those matching the user's accent first within each tier. quality is 'premium' | 'enhanced' | 'default' | 'basic' (robotic; avoid). gender is 'female' | 'male' | 'neutral' | 'unknown'.
+- Cast sensibly by default: give each role a distinct voice whose gender fits the character (infer it from names, pronouns and context), prefer the best quality, and let the user change any choice.
 
 ### Listening (speech-to-text and turn-taking)
 host.listen({ silenceMs?: 1200, maxMs?: 90000, lang? }) → { transcript, heard, reason, error? }
@@ -64,7 +67,7 @@ host.stopListening()
 host.storage.get(key) → value or undefined; host.storage.set(key, value) for any structured-cloneable value; host.storage.remove(key); host.storage.keys() → string[]
 
 ### Other
-host.keepAwake(on): stops the screen locking, e.g. during a rehearsal or workout.
+host.keepAwake(on): stops the screen locking, e.g. during a rehearsal or workout. Best effort: resolves false if the phone refuses (e.g. Low Power Mode); never throws.
 host.app → { id, name } (a plain property, not a Promise)
 
 ## Output format

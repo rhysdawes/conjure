@@ -6,7 +6,7 @@ import {
 import { buildSystemPrompt, buildCreateMessage, buildChangeMessage } from './prompts.js';
 import { injectRuntime } from './runtime.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const MAX_VERSIONS = 10;
 const MAX_ERRORS = 20;
 const EXAMPLES = [
@@ -173,7 +173,7 @@ async function startBuild(job) {
       ...baseRequest(settings),
       max_tokens: 64000,
       thinking: { type: 'adaptive', display: 'summarized' },
-      output_config: { effort: 'high' },
+      output_config: { effort: 'medium' },
       system: buildSystemPrompt(settings.about),
       messages: [{ role: 'user', content: userMessage }],
     });
