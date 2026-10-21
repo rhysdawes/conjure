@@ -47,18 +47,19 @@ host.pickFiles({ accept?: 'image/*,application/pdf', multiple?: true }) → [{ n
 
 ### Speaking (text-to-speech)
 host.speak(text, { voice?, direction?, rate?, pitch? }) → resolves when the speech has finished (or was stopped)
-- Two engines. "expressive" (available when host.voices().expressive is non-empty) is an actor-quality AI voice that performs plain-English direction such as "bitter, barely holding back tears" or "a gruff, amused Glaswegian in his sixties". Its first line can take 1–3 s to start. "system" is the iPhone's built-in voice: instant and free, but flat; direction is ignored, rate (0.5–2, default 1) and pitch (0.5–2) apply.
-- voice: a name from host.voices().expressive (uses the expressive engine) or host.voices().system[].name (uses the system engine). If omitted, expressive is used when available.
-- host.prefetchSpeech(text, sameOptions): starts generating expressive audio for lines coming up (e.g. the next two or three) so they play instantly. Fire-and-forget; a no-op for system voices.
+- Two tiers. "expressive" (available when host.voices().expressive is non-empty) is a natural, human-sounding voice that runs on the user's server; some of these voices also perform plain-English direction such as "bitter, barely holding back tears", and the rest ignore it, so always pass direction anyway. The first line can take 1–3 s to start. "system" is the iPhone's built-in voice: instant but robotic; direction is ignored, rate (0.5–2, default 1) and pitch (0.5–2) apply.
+- Always prefer expressive voices when there are any; the user has said the built-in ones sound terrible. Only fall back to system voices when expressive is empty.
+- voice: a name from host.voices().expressive or host.voices().system[].name. If omitted, the user's default expressive voice is used when available. rate also sets the expressive voice's speed.
+- host.prefetchSpeech(text, sameOptions): starts generating audio for lines coming up (e.g. the next two or three) so they play instantly. Fire-and-forget; a no-op for system voices. Use it.
 - host.stopSpeaking(): stops immediately; the pending speak() resolves.
-host.voices() → { expressive: string[], expressiveInfo: [{ name, gender }], system: [{ name, lang, quality, gender }] }
-- system voices come best-first, those matching the user's accent first within each tier. quality is 'premium' | 'enhanced' | 'default' | 'basic' (robotic; avoid). gender is 'female' | 'male' | 'neutral' | 'unknown'.
-- Cast sensibly by default: give each role a distinct voice whose gender fits the character (infer it from names, pronouns and context), prefer the best quality, and let the user change any choice.
+host.voices() → { expressive: string[], expressiveInfo: [{ name, gender, accent }], system: [{ name, lang, quality, gender }] }
+- expressiveInfo lists British voices first; the user is in the UK, so cast British voices unless a character calls for another accent. system voices come best-first; quality is 'premium' | 'enhanced' | 'default' | 'basic' (robotic; avoid). gender is 'female' | 'male' | 'neutral' | 'unknown'.
+- Cast sensibly by default: give each role a distinct voice whose gender fits the character (infer it from names, pronouns and context), and let the user change any choice.
 
 ### Listening (speech-to-text and turn-taking)
 host.listen({ silenceMs?: 1200, maxMs?: 90000, lang? }) → { transcript, heard, reason, error? }
 - Opens the mic and resolves when the user has finished speaking: after silenceMs of silence following speech (reason 'silence'), when you call host.stopListening() (reason 'stopped'), at maxMs (reason 'max'), or on failure (reason 'error').
-- heard says whether any speech was detected. transcript can be empty even when heard is true (some devices only detect voice activity), so never block progress on transcript accuracy.
+- heard says whether any speech was detected. The transcript arrives about a second after the user stops; it can be empty even when heard is true, so never block progress on transcript accuracy.
 - Live updates: host.on('transcript', ({ text }) => …) and host.on('level', ({ level }) => …) with mic level 0–1 when available. host.on returns an unsubscribe function.
 - For turn-taking apps (rehearsal, conversation, drills), ALWAYS show a big "Done" button while listening that calls host.stopListening(), plus pause/skip controls, and let the user tune silenceMs (people pause mid-line for effect). Never speak and listen at the same time: await one before starting the other.
 host.stopListening()

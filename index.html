@@ -99,9 +99,12 @@
       <div class="group">
         <label for="s-openai">OpenAI API key <span class="opt">optional</span></label>
         <input id="s-openai" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-…">
-        <p class="hint">Turns on expressive voices that can act out direction (“furious, but hiding it”). Without it, apps use the iPhone’s built-in voices. Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.</p>
-        <label for="s-voice" class="sub">Default expressive voice</label>
+        <p class="hint">Only used when there’s no Claude Code link: voices that act out direction (“furious, but hiding it”). Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.</p>
+      </div>
+      <div class="group">
+        <label for="s-voice">Default voice</label>
         <select id="s-voice"></select>
+        <p class="hint">Natural voices come from your Conjure server. Apps can still cast a different voice per character.</p>
       </div>
       <div class="group">
         <label for="s-about">About you <span class="opt">optional</span></label>

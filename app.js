@@ -1,12 +1,12 @@
 import * as db from './db.js';
 import {
-  AudioServices, Bridge, DEFAULT_MODEL, hasClaude, parseServerLink, DEFAULT_TTS_MODEL, EXPRESSIVE_VOICES,
+  AudioServices, Bridge, DEFAULT_MODEL, hasClaude, parseServerLink, DEFAULT_TTS_MODEL,
   makeClient, baseRequest, textOf, downscaleImage, readAsDataUrl,
 } from './host.js';
 import { buildSystemPrompt, buildCreateMessage, buildChangeMessage } from './prompts.js';
 import { injectRuntime } from './runtime.js';
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 const MAX_VERSIONS = 10;
 const MAX_ERRORS = 20;
 const EXAMPLES = [
@@ -451,9 +451,23 @@ function openSettings() {
   $('s-about').value = settings.about;
   $('s-model').value = settings.model;
   $('s-tts-model').value = settings.ttsModel;
-  $('s-voice').replaceChildren(...EXPRESSIVE_VOICES.map((v) => new Option(v[0].toUpperCase() + v.slice(1), v, false, v === settings.defaultVoice)));
+  fillVoicePicker().catch((err) => console.warn('Voice list failed:', err));
   $('s-check-result').textContent = '';
   show('settings');
+}
+
+async function fillVoicePicker() {
+  const { expressiveInfo } = await audio.voices();
+  const select = $('s-voice');
+  if (!expressiveInfo.length) {
+    select.replaceChildren(new Option('iPhone built-in (add a Claude Code link for natural voices)', ''));
+    return;
+  }
+  const current = expressiveInfo.some((v) => v.name === settings.defaultVoice) ? settings.defaultVoice : expressiveInfo[0].name;
+  select.replaceChildren(...expressiveInfo.map((v) => {
+    const label = `${v.name[0].toUpperCase()}${v.name.slice(1)} · ${v.accent || ''} ${v.gender || ''}`.trim();
+    return new Option(label, v.name, false, v.name === current);
+  }));
 }
 
 function bindSetting(inputId, key, transform = (v) => v.trim()) {
@@ -492,17 +506,20 @@ async function testAudio() {
   btn.disabled = true;
   try {
     const voices = await audio.voices();
-    write(`Expressive voices: ${voices.expressive.length ? 'on' : 'off (no OpenAI key)'}`);
-    const best = voices.system[0];
-    write(`iPhone voices for your language: ${voices.system.length}${best ? ` (best: ${best.name}, ${best.quality})` : ''}`);
+    const natural = Boolean(settings.serverLink && voices.expressive.length);
+    write(`Voices: ${natural ? `natural, from your server (${voices.expressive.length})` : voices.expressive.length ? 'OpenAI expressive' : 'iPhone built-in only'}`);
     write('Speaking…');
     await audio.speak({ text: 'Hello! After this, say a short sentence, then stop talking.' });
     write('Listening… say something.');
     const r = await audio.listen({ silenceMs: 1200, maxMs: 15000 }, (event, data) => {
+      if (event === 'level') {
+        const bars = Math.round(data.level * 12);
+        log.textContent = [...lines, `  Mic ${'▮'.repeat(bars)}${'▯'.repeat(12 - bars)}`].join('\n');
+      }
       if (event === 'transcript') log.textContent = [...lines, `  “${data.text}”`].join('\n');
     });
     write(`Heard you: ${r.heard ? 'yes' : 'no'} (${r.reason}${r.error ? `: ${r.error}` : ''})`);
-    write(`Transcript: ${r.transcript || '(none, using voice detection only)'}`);
+    write(`Transcript: ${r.transcript || (r.transcriptError ? `(failed: ${r.transcriptError})` : '(none)')}`);
     await audio.speak({
       text: r.transcript ? `You said: ${r.transcript}` : r.heard ? 'I heard you, but couldn’t make out the words.' : 'I didn’t hear anything.',
     });

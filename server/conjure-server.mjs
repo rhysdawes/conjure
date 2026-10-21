@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,6 +20,9 @@ const CLAUDE = process.env.CONJURE_CLAUDE || 'claude';
 const ALLOWED_ORIGINS = ['https://rhysdawes.github.io', 'http://localhost:8765', 'http://127.0.0.1:8765'];
 const MAX_BODY = 40 * 1024 * 1024;
 const MAX_RUNNING = 3;
+// voice_service.py: natural voices (Kokoro) and speech-to-text (Whisper), if installed.
+const VOICE_PORT = Number(process.env.CONJURE_VOICE_PORT || 8767);
+const VOICE_ROUTES = { 'GET /v1/voices': '/voices', 'POST /v1/tts': '/tts', 'POST /v1/transcribe': '/transcribe' };
 const STATE_DIR = join(homedir(), '.conjure-server');
 const TOKEN_FILE = join(STATE_DIR, 'token');
 // An empty working directory, so no project CLAUDE.md or settings leak into apps.
@@ -118,6 +121,22 @@ function claudeArgs(body) {
   const system = systemText(body.system);
   if (system) args.push('--system-prompt', system);
   return args;
+}
+
+function proxyToVoice(req, res, target) {
+  const upstream = httpRequest({
+    host: '127.0.0.1', port: VOICE_PORT, path: target, method: req.method,
+    headers: { 'Content-Type': req.headers['content-type'] || 'application/octet-stream', 'Content-Length': req.headers['content-length'] || 0 },
+  }, (up) => {
+    res.writeHead(up.statusCode, { 'Content-Type': up.headers['content-type'] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    up.pipe(res);
+  });
+  upstream.on('error', (err) => {
+    log(`voice service unreachable: ${err.message}`);
+    if (!res.headersSent) sendError(res, 503, 'api_error', 'The voice service on your Conjure server isn’t running');
+    else res.end();
+  });
+  req.pipe(upstream);
 }
 
 function sse(res, type, data) {
@@ -230,6 +249,11 @@ const server = createServer(async (req, res) => {
   if (!tokenOk(req.headers['x-api-key'])) {
     log(`refused ${req.method} ${path}: bad token`);
     sendError(res, 401, 'authentication_error', 'Wrong or missing Conjure server token');
+    return;
+  }
+  const voiceTarget = VOICE_ROUTES[`${req.method} ${path}`];
+  if (voiceTarget) {
+    proxyToVoice(req, res, voiceTarget);
     return;
   }
   if (req.method === 'GET' && path.startsWith('/v1/models/')) {

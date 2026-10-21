@@ -204,20 +204,52 @@ export class AudioServices {
       .sort((a, b) => rank[a.quality] - rank[b.quality] || localeFirst(a) - localeFirst(b) || a.name.localeCompare(b.name));
   }
 
+  // Natural voices (Kokoro) from the user's Conjure server, when they have one.
+  async naturalVoices() {
+    const server = parseServerLink(this.getSettings().serverLink);
+    if (!server) return [];
+    if (this.naturalCache && this.naturalCache.baseURL === server.baseURL) return this.naturalCache.list;
+    try {
+      const res = await fetch(`${server.baseURL}/v1/voices`, { headers: { 'x-api-key': server.token } });
+      if (!res.ok) {
+        console.warn(`Natural voices unavailable (${res.status})`);
+        return [];
+      }
+      const list = await res.json();
+      this.naturalCache = { baseURL: server.baseURL, list };
+      return list;
+    } catch (err) {
+      console.warn('Natural voices unavailable:', err);
+      return [];
+    }
+  }
+
+  // The "expressive" tier is the server's natural voices when there's a server,
+  // otherwise OpenAI's when there's a key; mini-apps don't need to know which.
   async voices() {
     const s = this.getSettings();
-    const expressive = s.openaiKey ? EXPRESSIVE_VOICES : [];
+    const natural = await this.naturalVoices();
+    const openai = s.openaiKey ? EXPRESSIVE_VOICES : [];
+    const expressiveInfo = natural.length
+      ? natural.map(({ name, gender, accent }) => ({ name, gender, accent }))
+      : openai.map((name) => ({ name, gender: EXPRESSIVE_GENDER[name], accent: 'American' }));
     return {
-      expressive,
-      expressiveInfo: expressive.map((name) => ({ name, gender: EXPRESSIVE_GENDER[name] })),
+      expressive: expressiveInfo.map((v) => v.name),
+      expressiveInfo,
       system: await this.systemVoices(),
     };
   }
 
-  usesExpressive(opts) {
+  // Which engine speaks this line: 'natural' (server), 'openai' or 'system'.
+  async engineFor(opts) {
     const s = this.getSettings();
-    if (!s.openaiKey) return false;
-    return !opts.voice || EXPRESSIVE_VOICES.includes(opts.voice);
+    const natural = (await this.naturalVoices()).map((v) => v.name);
+    if (opts.voice && natural.includes(opts.voice)) return 'natural';
+    if (opts.voice && s.openaiKey && EXPRESSIVE_VOICES.includes(opts.voice)) return 'openai';
+    const systemVoice = opts.voice && 'speechSynthesis' in window && speechSynthesis.getVoices().some((v) => v.name === opts.voice);
+    if (systemVoice) return 'system';
+    if (natural.length) return 'natural';
+    return s.openaiKey ? 'openai' : 'system';
   }
 
   // ---- speaking ----
@@ -231,45 +263,72 @@ export class AudioServices {
     this.stopSpeaking();
     const text = String(opts.text || '').trim();
     if (!text) return;
-    if (this.usesExpressive(opts)) {
-      const blob = await this.expressiveAudio(text, opts);
-      await this.playBlob(blob);
-    } else {
+    const engine = await this.engineFor(opts);
+    if (engine === 'system') {
       await this.speakSystem(text, opts);
+    } else {
+      const blob = await this.expressiveAudio(text, opts, engine);
+      await this.playBlob(blob);
     }
   }
 
-  prefetch(opts) {
+  async prefetch(opts) {
     const text = String(opts.text || '').trim();
-    if (!text || !this.usesExpressive(opts)) return;
-    this.expressiveAudio(text, opts).catch((err) => console.warn('Speech prefetch failed:', err));
+    if (!text) return;
+    const engine = await this.engineFor(opts);
+    if (engine === 'system') return;
+    this.expressiveAudio(text, opts, engine).catch((err) => console.warn('Speech prefetch failed:', err));
   }
 
-  async expressiveAudio(text, opts) {
+  async naturalVoiceFor(opts) {
+    const names = (await this.naturalVoices()).map((v) => v.name);
+    if (opts.voice && names.includes(opts.voice)) return opts.voice;
+    const preferred = this.getSettings().defaultVoice;
+    return names.includes(preferred) ? preferred : names[0];
+  }
+
+  async expressiveAudio(text, opts, engine) {
     const s = this.getSettings();
-    const voice = opts.voice || s.defaultVoice || 'coral';
-    const model = s.ttsModel || DEFAULT_TTS_MODEL;
-    const instructions = opts.direction
-      ? `Perform this line as an actor. Direction: ${opts.direction}`
-      : 'Natural, conversational delivery, like a scene partner reading opposite an actor.';
-    const key = await sha256(JSON.stringify([model, voice, instructions, text]));
+    const rate = Math.min(Math.max(Number(opts.rate) || 1, 0.5), 2);
+    let request;
+    if (engine === 'natural') {
+      const server = parseServerLink(s.serverLink);
+      const voice = await this.naturalVoiceFor(opts);
+      request = {
+        id: ['natural', voice, rate, text],
+        url: `${server.baseURL}/v1/tts`,
+        headers: { 'x-api-key': server.token, 'Content-Type': 'application/json' },
+        body: { text, voice, speed: rate },
+        type: 'audio/wav',
+      };
+    } else {
+      const voice = EXPRESSIVE_VOICES.includes(opts.voice) ? opts.voice : (EXPRESSIVE_VOICES.includes(s.defaultVoice) ? s.defaultVoice : 'coral');
+      const model = s.ttsModel || DEFAULT_TTS_MODEL;
+      const instructions = opts.direction
+        ? `Perform this line as an actor. Direction: ${opts.direction}`
+        : 'Natural, conversational delivery, like a scene partner reading opposite an actor.';
+      request = {
+        id: [model, voice, instructions, text],
+        url: 'https://api.openai.com/v1/audio/speech',
+        headers: { Authorization: `Bearer ${s.openaiKey}`, 'Content-Type': 'application/json' },
+        body: { model, voice, input: text, instructions, response_format: 'mp3' },
+        type: 'audio/mpeg',
+      };
+    }
+    const key = await sha256(JSON.stringify(request.id));
     if (this.inflight.has(key)) return this.inflight.get(key);
     const job = (async () => {
-      const url = `https://tts.conjure.local/${key}.mp3`;
+      const url = `https://tts.conjure.local/${key}`;
       const cache = 'caches' in window ? await caches.open(TTS_CACHE) : null;
       const hit = cache && await cache.match(url);
       if (hit) return hit.blob();
-      const res = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${s.openaiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, voice, input: text, instructions, response_format: 'mp3' }),
-      });
+      const res = await fetch(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) });
       if (!res.ok) {
         const detail = await res.text();
-        throw new Error(`Expressive voice failed (${res.status}): ${detail.slice(0, 300)}`);
+        throw new Error(`Voice failed (${res.status}): ${detail.slice(0, 300)}`);
       }
       const blob = await res.blob();
-      if (cache) await cache.put(url, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }));
+      if (cache) await cache.put(url, new Response(blob, { headers: { 'Content-Type': request.type } }));
       return blob;
     })();
     this.inflight.set(key, job);
@@ -336,6 +395,10 @@ export class AudioServices {
     const silenceMs = Math.min(Math.max(Number(opts.silenceMs) || 1200, 300), 10000);
     const maxMs = Math.min(Math.max(Number(opts.maxMs) || 90000, 2000), 600000);
     const lang = opts.lang || navigator.language || 'en-GB';
+    // With a Conjure server, record the mic ourselves and transcribe there:
+    // Safari's own recognition often hears nothing in home-screen apps.
+    const server = parseServerLink(this.getSettings().serverLink);
+    if (server) return this.listenAndTranscribe(server, { silenceMs, maxMs }, emit);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR && !this.recognitionBroken) {
       const result = await this.listenWithRecognition(SR, { silenceMs, maxMs, lang }, emit);
@@ -412,11 +475,28 @@ export class AudioServices {
     });
   }
 
-  async listenWithLevel({ silenceMs, maxMs }, emit) {
+  async openMic() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return { transcript: '', heard: false, reason: 'error', error: 'This browser cannot use the microphone' };
+      throw new Error('This browser cannot use the microphone');
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (err) {
+      console.warn('Microphone unavailable:', err);
+      if (err.name === 'NotAllowedError') throw new Error('Microphone access is off. Allow it for Conjure (iPhone Settings → Safari → Microphone, or the prompt) and try again.');
+      throw new Error(`Couldn’t open the microphone (${err.name}: ${err.message})`);
+    }
+  }
+
+  // Voice-activity detection on the mic level, optionally recording what was said.
+  // Resolves { heard, reason, audio? } once the speaker has gone quiet.
+  async listenWithLevel({ silenceMs, maxMs, record = false }, emit) {
+    let stream;
+    try {
+      stream = await this.openMic();
+    } catch (err) {
+      return { transcript: '', heard: false, reason: 'error', error: err.message };
+    }
     if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (this.audioCtx.state !== 'running') await this.audioCtx.resume();
     const source = this.audioCtx.createMediaStreamSource(stream);
@@ -425,21 +505,43 @@ export class AudioServices {
     source.connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
 
+    let recorder = null;
+    const chunks = [];
+    if (record && window.MediaRecorder) {
+      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t));
+      recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      recorder.start(250);
+    }
+
     return new Promise((resolve) => {
       const started = performance.now();
-      let floor = 0.01;
+      let floor = 0.005;
       let calibrating = true;
+      let loudMs = 0;
       let heard = false;
       let lastLoud = started;
       let done = false;
+      const release = () => {
+        source.disconnect();
+        stream.getTracks().forEach((t) => t.stop());
+      };
       const finish = (reason) => {
         if (done) return;
         done = true;
         clearInterval(timer);
         this.stopListen = null;
-        source.disconnect();
-        stream.getTracks().forEach((t) => t.stop());
-        resolve({ transcript: '', heard, reason });
+        if (!recorder || recorder.state === 'inactive') {
+          release();
+          resolve({ transcript: '', heard, reason });
+          return;
+        }
+        recorder.onstop = () => {
+          release();
+          const audio = chunks.length ? new Blob(chunks, { type: recorder.mimeType || chunks[0].type }) : null;
+          resolve({ transcript: '', heard, reason, audio });
+        };
+        recorder.stop();
       };
       const timer = setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
@@ -448,18 +550,43 @@ export class AudioServices {
         const rms = Math.sqrt(sum / samples.length);
         const now = performance.now();
         if (calibrating) {
-          floor = Math.max(floor * 0.8 + rms * 0.2, 0.004);
-          if (now - started > 400) calibrating = false;
+          floor = Math.max(floor * 0.8 + rms * 0.2, 0.003);
+          if (now - started > 300) calibrating = false;
           return;
         }
-        const threshold = Math.max(floor * 3, 0.02);
-        emit('level', { level: Math.min(rms / (threshold * 3), 1) });
-        if (rms > threshold) { heard = true; lastLoud = now; }
+        const threshold = Math.max(floor * 3, 0.012);
+        emit('level', { level: Math.min(rms / (threshold * 4), 1) });
+        if (rms > threshold) {
+          loudMs += 50;
+          lastLoud = now;
+          // A bump or click isn't speech: need ~150ms of sound before counting it.
+          if (loudMs >= 150) heard = true;
+        }
         if (heard && now - lastLoud >= silenceMs) finish('silence');
         else if (now - started >= maxMs) finish('max');
       }, 50);
       this.stopListen = () => finish('stopped');
     });
+  }
+
+  async listenAndTranscribe(server, { silenceMs, maxMs }, emit) {
+    const result = await this.listenWithLevel({ silenceMs, maxMs, record: true }, emit);
+    const { audio, ...rest } = result;
+    if (!result.heard || !audio) return rest;
+    try {
+      const res = await fetch(`${server.baseURL}/v1/transcribe`, {
+        method: 'POST',
+        headers: { 'x-api-key': server.token, 'Content-Type': audio.type || 'audio/mp4' },
+        body: audio,
+      });
+      if (!res.ok) throw new Error(`transcription failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+      const { text } = await res.json();
+      if (text) emit('transcript', { text });
+      return { ...rest, transcript: text || '' };
+    } catch (err) {
+      console.warn('Transcription failed:', err);
+      return { ...rest, transcriptError: err.message };
+    }
   }
 
   // ---- screen ----
