@@ -35,13 +35,15 @@ function systemVoiceGender(name) {
 // ---------- Claude ----------
 
 // A Claude Code link comes from server/conjure-server.mjs: https://host/#token.
-// It runs Conjure on the user's Claude Code login instead of an API key.
+// It runs Conjure on the user's Claude Code login instead of an API key. Links
+// often get mangled on the way to the phone, so a token as the last path
+// segment is accepted too.
 export function parseServerLink(link) {
-  const text = (link || '').trim();
+  const text = (link || '').replace(/\s+/g, '');
   if (!text || !URL.canParse(text)) return null;
   const url = new URL(text);
-  const token = url.hash.slice(1);
-  if (!token || !/^https?:$/.test(url.protocol)) return null;
+  const token = url.hash.slice(1) || url.pathname.split('/').filter(Boolean).pop() || '';
+  if (token.length < 20 || !/^https?:$/.test(url.protocol)) return null;
   return { baseURL: url.origin, token };
 }
 
