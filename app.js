@@ -6,7 +6,7 @@ import {
 import { buildSystemPrompt, buildCreateMessage, buildChangeMessage } from './prompts.js';
 import { injectRuntime } from './runtime.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const MAX_VERSIONS = 10;
 const MAX_ERRORS = 20;
 const EXAMPLES = [

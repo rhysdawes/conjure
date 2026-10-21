@@ -9,6 +9,8 @@
 #   * a Caddy site on an sslip.io name, so it gets HTTPS without DNS changes
 # Run from this folder as a sudo-capable user: ./install-linux.sh
 # Then sign Conjure in once with: sudo -iu conjure .local/bin/claude auth login
+# For ElevenLabs voices, put CONJURE_ELEVENLABS_KEY=<key> in
+# /home/conjure/.conjure-server/voice.env (mode 600, owned by conjure).
 set -euo pipefail
 
 SVC_USER=conjure
@@ -80,6 +82,8 @@ User=$SVC_USER
 WorkingDirectory=$HOME_DIR/conjure-server
 ExecStart=$HOME_DIR/conjure-server/.venv/bin/python $HOME_DIR/conjure-server/voice_service.py
 Environment=HOME=$HOME_DIR
+# Optional: CONJURE_ELEVENLABS_KEY=... turns on ElevenLabs voices (Kokoro otherwise).
+EnvironmentFile=-$HOME_DIR/.conjure-server/voice.env
 Restart=always
 RestartSec=3
 MemoryMax=4G

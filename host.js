@@ -294,11 +294,12 @@ export class AudioServices {
     if (engine === 'natural') {
       const server = parseServerLink(s.serverLink);
       const voice = await this.naturalVoiceFor(opts);
+      const direction = String(opts.direction || '');
       request = {
-        id: ['natural', voice, rate, text],
+        id: ['natural', voice, rate, direction, text],
         url: `${server.baseURL}/v1/tts`,
         headers: { 'x-api-key': server.token, 'Content-Type': 'application/json' },
-        body: { text, voice, speed: rate },
+        body: { text, voice, direction, speed: rate },
         type: 'audio/wav',
       };
     } else {
@@ -328,7 +329,8 @@ export class AudioServices {
         throw new Error(`Voice failed (${res.status}): ${detail.slice(0, 300)}`);
       }
       const blob = await res.blob();
-      if (cache) await cache.put(url, new Response(blob, { headers: { 'Content-Type': request.type } }));
+      const type = res.headers.get('Content-Type') || request.type;
+      if (cache) await cache.put(url, new Response(blob, { headers: { 'Content-Type': type } }));
       return blob;
     })();
     this.inflight.set(key, job);
