@@ -6,7 +6,7 @@ import {
 import { buildSystemPrompt, buildCreateMessage, buildChangeMessage } from './prompts.js';
 import { injectRuntime } from './runtime.js';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const MAX_VERSIONS = 10;
 const MAX_ERRORS = 20;
 const EXAMPLES = [
@@ -519,6 +519,7 @@ async function testAudio() {
       if (event === 'transcript') log.textContent = [...lines, `  “${data.text}”`].join('\n');
     });
     write(`Heard you: ${r.heard ? 'yes' : 'no'} (${r.reason}${r.error ? `: ${r.error}` : ''})`);
+    if (r.micState) write(`Mic: ${r.micState}, loudest ${r.micPeak}, background ${r.micFloor}`);
     write(`Transcript: ${r.transcript || (r.transcriptError ? `(failed: ${r.transcriptError})` : '(none)')}`);
     await audio.speak({
       text: r.transcript ? `You said: ${r.transcript}` : r.heard ? 'I heard you, but couldn’t make out the words.' : 'I didn’t hear anything.',

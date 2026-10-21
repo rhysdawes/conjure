@@ -151,7 +151,6 @@ export class AudioServices {
     this.inflight = new Map();
     this.stopSpeech = null;
     this.stopListen = null;
-    this.audioCtx = null;
     this.wakeLock = null;
     this.wantAwake = false;
     document.addEventListener('visibilitychange', () => {
@@ -169,11 +168,6 @@ export class AudioServices {
       const u = new SpeechSynthesisUtterance(' ');
       u.volume = 0;
       speechSynthesis.speak(u);
-    }
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (Ctx) {
-      this.audioCtx = new Ctx();
-      this.audioCtx.resume().catch((err) => console.warn('AudioContext resume failed:', err));
     }
   }
 
@@ -499,10 +493,16 @@ export class AudioServices {
     } catch (err) {
       return { transcript: '', heard: false, reason: 'error', error: err.message };
     }
-    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (this.audioCtx.state !== 'running') await this.audioCtx.resume();
-    const source = this.audioCtx.createMediaStreamSource(stream);
-    const analyser = this.audioCtx.createAnalyser();
+    // A fresh context per listen: iOS leaves a long-lived one 'interrupted' after
+    // other audio plays, and then it reads silence. Safari lets a context start
+    // without a tap while the mic is capturing.
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state !== 'running') {
+      await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1500))]);
+    }
+    const ctxState = ctx.state;
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     source.connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
@@ -524,10 +524,13 @@ export class AudioServices {
       let heard = false;
       let lastLoud = started;
       let done = false;
+      let peak = 0;
       const release = () => {
         source.disconnect();
         stream.getTracks().forEach((t) => t.stop());
+        ctx.close().catch((err) => console.warn('Closing mic audio context failed:', err));
       };
+      const diag = () => ({ micState: ctxState, micPeak: Number(peak.toFixed(3)), micFloor: Number(floor.toFixed(3)) });
       const finish = (reason) => {
         if (done) return;
         done = true;
@@ -535,13 +538,13 @@ export class AudioServices {
         this.stopListen = null;
         if (!recorder || recorder.state === 'inactive') {
           release();
-          resolve({ transcript: '', heard, reason });
+          resolve({ transcript: '', heard, reason, ...diag() });
           return;
         }
         recorder.onstop = () => {
           release();
           const audio = chunks.length ? new Blob(chunks, { type: recorder.mimeType || chunks[0].type }) : null;
-          resolve({ transcript: '', heard, reason, audio });
+          resolve({ transcript: '', heard, reason, audio, ...diag() });
         };
         recorder.stop();
       };
@@ -551,6 +554,7 @@ export class AudioServices {
         for (const s of samples) sum += s * s;
         const rms = Math.sqrt(sum / samples.length);
         const now = performance.now();
+        peak = Math.max(peak, rms);
         if (calibrating) {
           floor = Math.max(floor * 0.8 + rms * 0.2, 0.003);
           if (now - started > 300) calibrating = false;
