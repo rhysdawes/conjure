@@ -10,10 +10,9 @@ Run locally: `python3 -m http.server 8765` and open http://127.0.0.1:8765.
 
 ## Run on your Claude Code login (no API key)
 
-`server/conjure-server.mjs` answers Conjure's Claude requests with `claude -p` on your computer, so builds use your Claude plan.
+`server/conjure-server.mjs` answers Conjure's Claude requests with `claude -p`, so builds use your Claude plan. It runs on any machine that's logged in to Claude Code.
 
-1. `./server/install-mac.sh`: starts it now and at every login, keeping the Mac awake while it runs.
-2. `tailscale funnel --bg 8766`: gives it a public HTTPS address.
-3. Paste the printed link (`https://<mac>.ts.net/#<token>`) into Conjure → Settings → Claude Code link.
+- **Linux box with Caddy** (what Conjure uses now): copy `server/` over and run `./install-linux.sh`. It sets up a systemd service and a Caddy site at `conjure.<ip-with-dashes>.sslip.io`, so no DNS changes are needed.
+- **Mac**: run `./server/install-mac.sh`, then `tailscale funnel --bg 8766`.
 
-The token in the link is the only thing protecting your machine, so keep it to yourself. Uninstall with `./server/install-mac.sh --uninstall`.
+Either script prints a link (`https://…/#<token>`) to paste into Conjure → Settings → Claude Code link. The token is the only thing protecting the machine, so keep it to yourself.

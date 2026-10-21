@@ -174,7 +174,11 @@ function handleMessages(req, res, body) {
           sse(res, msg.event.type, msg.event);
           if (msg.event.type === 'message_stop') finished = true;
         }
-      } else if (msg.type === 'result' && msg.is_error) {
+      } else if (msg.type === 'assistant' && msg.message.model === '<synthetic>') {
+        // Claude Code's own notices, e.g. "You've hit your weekly limit · resets 8pm (UTC)".
+        const notice = (msg.message.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ');
+        failure = `Claude Code says: ${notice}`;
+      } else if (msg.type === 'result' && msg.is_error && !failure) {
         failure = msg.result || (msg.errors || []).join('; ') || msg.subtype || 'Claude Code failed';
       }
     }
