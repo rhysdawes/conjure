@@ -34,7 +34,22 @@ function systemVoiceGender(name) {
 
 // ---------- Claude ----------
 
+// A Claude Code link comes from server/conjure-server.mjs: https://host/#token.
+// It runs Conjure on the user's Claude Code login instead of an API key.
+export function parseServerLink(link) {
+  const text = (link || '').trim();
+  if (!text || !URL.canParse(text)) return null;
+  const url = new URL(text);
+  const token = url.hash.slice(1);
+  if (!token || !/^https?:$/.test(url.protocol)) return null;
+  return { baseURL: url.origin, token };
+}
+
+export const hasClaude = (settings) => Boolean(parseServerLink(settings.serverLink) || settings.anthropicKey);
+
 export function makeClient(settings) {
+  const server = parseServerLink(settings.serverLink);
+  if (server) return new Anthropic({ apiKey: server.token, baseURL: server.baseURL, dangerouslyAllowBrowser: true });
   return new Anthropic({ apiKey: settings.anthropicKey, dangerouslyAllowBrowser: true });
 }
 
@@ -77,7 +92,7 @@ export function extractJson(text) {
 }
 
 async function runAi(settings, opts) {
-  if (!settings.anthropicKey) throw new Error('No Anthropic API key. Add one in Conjure settings.');
+  if (!hasClaude(settings)) throw new Error('Conjure isn’t connected to Claude. Add your Claude Code link in Conjure settings.');
   if (!opts.prompt) throw new Error('host.ai needs a prompt');
   const client = makeClient(settings);
   const content = [...(opts.files || []).map(fileBlock), { type: 'text', text: String(opts.prompt) }];

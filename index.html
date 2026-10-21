@@ -28,7 +28,7 @@
       <strong>Add Conjure to your Home Screen.</strong> In Safari, tap Share, then “Add to Home Screen”. It runs full-screen and keeps your apps safe from Safari’s storage clean-up.
     </div>
     <div id="key-hint" class="notice notice-accent" hidden>
-      <strong>One step first:</strong> add your Anthropic API key in settings so Conjure can build apps.
+      <strong>One step first:</strong> connect Conjure to Claude in settings so it can build apps.
       <button class="btn btn-small" id="key-hint-btn">Open settings</button>
     </div>
     <div class="grid" id="app-grid"></div>
@@ -88,10 +88,13 @@
     </header>
     <div class="settings-body">
       <div class="group">
-        <label for="s-anthropic">Anthropic API key <span class="req">required</span></label>
+        <label for="s-server">Claude Code link</label>
+        <input id="s-server" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…#…">
+        <p class="hint">Runs Conjure on your Claude Code login, through the Conjure server on your computer. Paste the link it prints. It stays on this phone.</p>
+        <label for="s-anthropic" class="sub">Or an Anthropic API key</label>
         <input id="s-anthropic" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…">
-        <p class="hint">Builds your apps and powers their AI features. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It stays on this phone.</p>
-        <button class="btn btn-small" id="s-check">Check key</button> <span class="hint inline" id="s-check-result"></span>
+        <p class="hint">Used only when there’s no Claude Code link. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+        <button class="btn btn-small" id="s-check">Check connection</button> <span class="hint inline" id="s-check-result"></span>
       </div>
       <div class="group">
         <label for="s-openai">OpenAI API key <span class="opt">optional</span></label>

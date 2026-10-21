@@ -1,12 +1,12 @@
 import * as db from './db.js';
 import {
-  AudioServices, Bridge, DEFAULT_MODEL, DEFAULT_TTS_MODEL, EXPRESSIVE_VOICES,
+  AudioServices, Bridge, DEFAULT_MODEL, hasClaude, parseServerLink, DEFAULT_TTS_MODEL, EXPRESSIVE_VOICES,
   makeClient, baseRequest, textOf, downscaleImage, readAsDataUrl,
 } from './host.js';
 import { buildSystemPrompt, buildCreateMessage, buildChangeMessage } from './prompts.js';
 import { injectRuntime } from './runtime.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 const MAX_VERSIONS = 10;
 const MAX_ERRORS = 20;
 const EXAMPLES = [
@@ -19,6 +19,7 @@ const EXAMPLES = [
 const $ = (id) => document.getElementById(id);
 
 let settings = {
+  serverLink: '',
   anthropicKey: '',
   openaiKey: '',
   about: '',
@@ -52,7 +53,9 @@ const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.p
 
 function describeError(err) {
   const status = err && err.status;
-  if (status === 401) return 'Your Anthropic API key was rejected. Check it in settings.';
+  const viaServer = Boolean(parseServerLink(settings.serverLink));
+  if (status === 401) return viaServer ? 'Your Claude Code server refused the link. Paste the link into settings again.' : 'Your Anthropic API key was rejected. Check it in settings.';
+  if (viaServer && err && /connection|fetch|network/i.test(err.message || '')) return `Couldn’t reach your Claude Code server. Is your Mac on, awake and online?\n(${err.message})`;
   if (status === 403) return 'This API key isn’t allowed to use that model. Check your Anthropic console.';
   if (status === 429) return 'Anthropic is rate-limiting this key (or it’s out of credit). Wait a minute, or check billing at console.anthropic.com.';
   if (status === 529 || status === 503) return 'Claude is overloaded right now. Try again in a minute.';
@@ -112,7 +115,7 @@ function renderHome() {
   const sorted = [...apps].sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
   for (const a of sorted) grid.append(tile({ icon: a.icon, name: a.name, onClick: () => openApp(a.id) }));
   $('empty-state').hidden = apps.length > 0;
-  $('key-hint').hidden = Boolean(settings.anthropicKey);
+  $('key-hint').hidden = hasClaude(settings);
   $('install-hint').hidden = isStandalone() || !isIOS();
 }
 
@@ -144,9 +147,9 @@ function paintProgress(text, thoughts, mode) {
 }
 
 async function startBuild(job) {
-  if (!settings.anthropicKey) {
+  if (!hasClaude(settings)) {
     openSettings();
-    toast('Add your Anthropic API key first');
+    toast('Add your Claude Code link first');
     return;
   }
   const run = { ...job, aborted: false, stream: null };
@@ -442,6 +445,7 @@ function pickFiles(opts) {
 // ---------- settings ----------
 
 function openSettings() {
+  $('s-server').value = settings.serverLink;
   $('s-anthropic').value = settings.anthropicKey;
   $('s-openai').value = settings.openaiKey;
   $('s-about').value = settings.about;
@@ -461,8 +465,12 @@ function bindSetting(inputId, key, transform = (v) => v.trim()) {
 
 async function checkKey() {
   const out = $('s-check-result');
-  if (!settings.anthropicKey) {
-    out.textContent = 'Paste a key first';
+  if (settings.serverLink && !parseServerLink(settings.serverLink)) {
+    out.textContent = '✗ That link doesn’t look right: it should start with https:// and end with #code';
+    return;
+  }
+  if (!hasClaude(settings)) {
+    out.textContent = 'Paste your Claude Code link or a key first';
     return;
   }
   out.textContent = 'Checking…';
@@ -514,7 +522,7 @@ async function exportBackup() {
     records[a.id] = await db.get(`app:${a.id}`);
     for (const key of await db.keysWithPrefix(`data:${a.id}:`)) data[key] = await db.get(key);
   }
-  const { anthropicKey, openaiKey, ...safeSettings } = settings;
+  const { serverLink, anthropicKey, openaiKey, ...safeSettings } = settings;
   const payload = { conjure: 1, version: VERSION, exportedAt: new Date().toISOString(), settings: safeSettings, apps, records, data };
   const name = `conjure-backup-${new Date().toISOString().slice(0, 10)}.json`;
   const file = new File([JSON.stringify(payload)], name, { type: 'application/json' });
@@ -583,6 +591,7 @@ function wire() {
   $('delete-no').addEventListener('click', () => { $('delete-confirm').hidden = true; });
   $('delete-yes').addEventListener('click', () => deleteApp().catch((err) => { console.error('Delete failed:', err); toast(`Delete failed: ${err.message}`); }));
 
+  bindSetting('s-server', 'serverLink');
   bindSetting('s-anthropic', 'anthropicKey');
   bindSetting('s-openai', 'openaiKey');
   bindSetting('s-about', 'about', (v) => v);
