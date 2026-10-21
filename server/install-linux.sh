@@ -6,11 +6,13 @@
 #
 # Conjure gets its own Claude Code login (in ~/.claude-conjure), separate from
 # the one you use on this box. Sign it in once with:
-#   CLAUDE_CONFIG_DIR=~/.claude-conjure claude auth login
+#   CLAUDE_CONFIG_DIR=~/.claude-conjure claude-local auth login
 set -euo pipefail
 
 DIR="$HOME/conjure-server"
-CLAUDE=$(command -v claude)
+# On the fdb boxes `claude` is a shim that runs calls on the credential box with
+# the pipeline's pooled logins; `claude-local` is the genuine CLI on this box.
+CLAUDE=$(command -v claude-local || command -v claude)
 NODE=$(command -v node)
 IP=$(curl -4 -fsS -m 10 ifconfig.me)
 HOST="conjure.${IP//./-}.sslip.io"
