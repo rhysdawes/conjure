@@ -3,6 +3,10 @@
 # 127.0.0.1:8766 running as the current user (who must be logged in to Claude
 # Code), plus a Caddy site for it on an sslip.io name, so it gets HTTPS without
 # any DNS changes. Run from this folder: ./install-linux.sh
+#
+# Conjure gets its own Claude Code login (in ~/.claude-conjure), separate from
+# the one you use on this box. Sign it in once with:
+#   CLAUDE_CONFIG_DIR=~/.claude-conjure claude auth login
 set -euo pipefail
 
 DIR="$HOME/conjure-server"
@@ -25,6 +29,7 @@ User=$USER
 WorkingDirectory=$DIR
 ExecStart=$NODE $DIR/conjure-server.mjs
 Environment=CONJURE_CLAUDE=$CLAUDE
+Environment=CLAUDE_CONFIG_DIR=$HOME/.claude-conjure
 Environment=PATH=$(dirname "$CLAUDE"):$(dirname "$NODE"):/usr/bin:/bin
 Restart=always
 RestartSec=3
