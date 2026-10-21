@@ -30,8 +30,14 @@ if ! sudo test -x "$CLAUDE"; then
 fi
 
 sudo install -d -o "$SVC_USER" -g "$SVC_USER" -m 700 "$HOME_DIR/conjure-server"
-for f in conjure-server.mjs voice_service.py; do
-  sudo install -o "$SVC_USER" -g "$SVC_USER" -m 600 "$(dirname "$0")/$f" "$HOME_DIR/conjure-server/$f"
+# Restart a service only when its code changed: a restart kills any build in progress.
+RESTART=()
+for pair in conjure-server.mjs:conjure-server voice_service.py:conjure-voice; do
+  f=${pair%%:*}
+  if ! sudo cmp -s "$(dirname "$0")/$f" "$HOME_DIR/conjure-server/$f"; then
+    sudo install -o "$SVC_USER" -g "$SVC_USER" -m 600 "$(dirname "$0")/$f" "$HOME_DIR/conjure-server/$f"
+    RESTART+=("${pair##*:}")
+  fi
 done
 
 # Python env and model files for the voice service, owned by the conjure user.
@@ -100,8 +106,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable conjure-server conjure-voice
-sudo systemctl restart conjure-server conjure-voice
+sudo systemctl enable --now conjure-server conjure-voice
+if [ ${#RESTART[@]} -gt 0 ]; then sudo systemctl restart "${RESTART[@]}"; fi
 
 if ! grep -q "^$HOST" "$CADDYFILE"; then
   sudo cp "$CADDYFILE" "$CADDYFILE.bak-conjure-$(date +%s)"
